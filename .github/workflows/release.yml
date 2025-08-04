@@ -1,0 +1,106 @@
+permissions:
+  contents: write
+
+name: Build, Package & Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_prefix:
+        description: 'Custom release prefix (e.g., R1)'
+        required: true
+      tag:
+        description: 'Release tag (e.g., 1.0)'
+        required: true
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      release_date: ${{ steps.current_time.outputs.formattedTime }}
+      short_hash:  ${{ steps.hash.outputs.short }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get current date
+        id: current_time
+        uses: josStorer/get-current-time@v2
+        with:
+          format: 'YYYYMMDD'
+
+      - name: Get short commit hash
+        id: hash
+        run: |
+          echo "short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+  package:
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      artifact_name: ${{ steps.gen.outputs.artifact_name }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate artifact filename
+        id: gen
+        run: |
+          PREFIX=${{ github.event.inputs.release_prefix }}
+          DATE=${{ needs.prepare.outputs.release_date }}
+          HASH=${{ needs.prepare.outputs.short_hash }}
+          echo "artifact_name=VideoLooper-${PREFIX}-${DATE}-${HASH}.zip" >> $GITHUB_OUTPUT
+
+      - name: Create ZIP
+        run: |
+          zip -r "${{ steps.gen.outputs.artifact_name }}" . -x ".git/*" ".github/*"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.gen.outputs.artifact_name }}
+          path: ${{ steps.gen.outputs.artifact_name }}
+
+  release:
+    needs: [prepare, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Generate release notes
+        id: notes
+        run: |
+          PREV_TAG=$(git tag --sort=-creatordate | grep -v "${{ github.event.inputs.tag }}" | head -n1)
+          [ -z "$PREV_TAG" ] && PREV_TAG=$(git rev-list --max-parents=0 HEAD)
+          git log $PREV_TAG..HEAD --pretty=format:'- %s ([%h](https://github.com/'"$GITHUB_REPOSITORY"'/commit/%H))' > notes.md
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name:    ${{ github.event.inputs.tag }}
+          release_name:${{ github.event.inputs.release_prefix }}-${{ needs.prepare.outputs.release_date }}
+          body_path:   notes.md
+          draft:       false
+          prerelease:  false
+
+      - name: Upload Release ZIP
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url:        ${{ steps.create_release.outputs.upload_url }}
+          asset_path:        ${{ needs.package.outputs.artifact_name }}
+          asset_name:        ${{ needs.package.outputs.artifact_name }}
+          asset_content_type: application/zip
