@@ -17,3 +17,6 @@ Batch script to loop and watermark `.mp4` videos using FFmpeg on Windows.
 ## Requirements
 - Windows
 - FFmpeg (in PATH)
+
+## Credit
+- FFmpeg by [GYAN.DEV](https://www.gyan.dev/ffmpeg/)
