@@ -11,7 +11,7 @@ Batch script to loop and watermark `.mp4` videos using FFmpeg on Windows.
 
 ## Usage
 1. Put `.mp4` in folder `original`
-2. Run `run.bat`
+2. Double click `run.bat`
 3. Follow the menu
 
 ## Requirements
