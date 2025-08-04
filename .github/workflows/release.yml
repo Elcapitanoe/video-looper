@@ -59,9 +59,9 @@ jobs:
           HASH=${{ needs.prepare.outputs.short_hash }}
           echo "artifact_name=VideoLooper-${PREFIX}-${DATE}-${HASH}.zip" >> $GITHUB_OUTPUT
 
-      - name: Create ZIP
+      - name: Create ZIP (only run.bat & ffmpeg.exe)
         run: |
-          zip -r "${{ steps.gen.outputs.artifact_name }}" . -x ".git/*" ".github/*"
+          zip "${{ steps.gen.outputs.artifact_name }}" run.bat ffmpeg.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
