@@ -20,7 +20,7 @@ jobs:
       contents: read
     outputs:
       release_date: ${{ steps.current_time.outputs.formattedTime }}
-      short_hash:  ${{ steps.hash.outputs.short }}
+      short_hash:   ${{ steps.hash.outputs.short }}
 
     steps:
       - uses: actions/checkout@v4
@@ -86,10 +86,28 @@ jobs:
           name: ${{ needs.package.outputs.artifact_name }}
           path: .
 
+      - name: Remove existing release & tag
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const tag = '${{ github.event.inputs.tag }}';
+            const owner = context.repo.owner;
+            const repo  = context.repo.repo;
+            // find and delete existing release
+            const { data: releases } = await github.rest.repos.listReleases({ owner, repo });
+            const existing = releases.find(r => r.tag_name === tag);
+            if (existing) {
+              await github.rest.repos.deleteRelease({ owner, repo, release_id: existing.id });
+              await github.rest.git.deleteRef({ owner, repo, ref: `tags/${tag}` });
+              // also delete local tag to avoid using it in changelog
+              execSync(`git tag -d ${tag}`, { stdio: 'inherit' });
+            }
+
       - name: Generate release notes
         id: notes
         run: |
-          PREV_TAG=$(git tag --sort=-creatordate | grep -v "${{ github.event.inputs.tag }}" | head -n1)
+          PREV_TAG=$(git tag --sort=-creatordate | head -n1)
           [ -z "$PREV_TAG" ] && PREV_TAG=$(git rev-list --max-parents=0 HEAD)
           git log $PREV_TAG..HEAD --pretty=format:'- %s ([%h](https://github.com/'"$GITHUB_REPOSITORY"'/commit/%H))' > notes.md
 
@@ -99,18 +117,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.event.inputs.tag }}
+          tag_name:     ${{ github.event.inputs.tag }}
           release_name: ${{ github.event.inputs.release_prefix }}-${{ needs.prepare.outputs.release_date }}
-          body_path: notes.md
-          draft: false
-          prerelease: false
+          body_path:    notes.md
+          draft:        false
+          prerelease:   false
 
       - name: Upload Release ZIP
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ needs.package.outputs.artifact_name }}
-          asset_name: ${{ needs.package.outputs.artifact_name }}
+          upload_url:         ${{ steps.create_release.outputs.upload_url }}
+          asset_path:         ${{ needs.package.outputs.artifact_name }}
+          asset_name:         ${{ needs.package.outputs.artifact_name }}
           asset_content_type: application/zip
